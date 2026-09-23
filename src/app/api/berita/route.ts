@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { newsSchema } from "@/lib/validations/news";
 import { fallbackNews } from "@/lib/data/fallback";
+import { invalidateCache } from "@/lib/cache";
 
 export async function GET(request: Request) {
   try {
@@ -67,6 +68,9 @@ export async function POST(request: Request) {
         publishedAt: parsed.data.publishedAt ? new Date(parsed.data.publishedAt) : new Date(),
       },
     });
+
+    invalidateCache("news");
+    invalidateCache("admin:dashboard");
 
     return NextResponse.json({ success: true, data: news }, { status: 201 });
   } catch (error) {

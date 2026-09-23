@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { newsSchema } from "@/lib/validations/news";
+import { invalidateCache } from "@/lib/cache";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -57,6 +58,9 @@ export async function PUT(request: Request, { params }: RouteParams) {
       data: updateData,
     });
 
+    invalidateCache("news");
+    invalidateCache("admin:dashboard");
+
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gagal memperbarui berita";
@@ -73,6 +77,9 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     await prisma.news.delete({
       where: { id },
     });
+
+    invalidateCache("news");
+    invalidateCache("admin:dashboard");
 
     return NextResponse.json({ success: true, message: "Berita berhasil dihapus" });
   } catch (error) {

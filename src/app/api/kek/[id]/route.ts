@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { kekSchema } from "@/lib/validations/kek";
+import { invalidateCache } from "@/lib/cache";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -53,6 +54,9 @@ export async function PUT(request: Request, { params }: RouteParams) {
       data: parsed.data,
     });
 
+    invalidateCache("kek");
+    invalidateCache("admin:dashboard");
+
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gagal memperbarui data KEK";
@@ -69,6 +73,9 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     await prisma.kEK.delete({
       where: { id },
     });
+
+    invalidateCache("kek");
+    invalidateCache("admin:dashboard");
 
     return NextResponse.json({ success: true, message: "KEK berhasil dihapus" });
   } catch (error) {

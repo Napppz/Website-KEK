@@ -3,6 +3,7 @@ import { Prisma, KekStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { kekSchema } from "@/lib/validations/kek";
 import { fallbackKeks } from "@/lib/data/fallback";
+import { invalidateCache } from "@/lib/cache";
 
 export async function GET(request: Request) {
   try {
@@ -50,6 +51,9 @@ export async function POST(request: Request) {
     const kek = await prisma.kEK.create({
       data: parsed.data,
     });
+
+    invalidateCache("kek");
+    invalidateCache("admin:dashboard");
 
     return NextResponse.json({ success: true, data: kek }, { status: 201 });
   } catch (error) {

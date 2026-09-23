@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { Prisma, Role } from "@prisma/client";
 import { fallbackNews, fallbackCategories } from "./fallback";
+import { withCache } from "@/lib/cache";
 import type { News, NewsCategory } from "@/types";
 import { NewsQueryParams } from "../validations/query";
 
@@ -24,27 +25,29 @@ export interface PaginatedNews {
  * Mengambil berita terbaru yang telah dipublikasikan
  */
 export async function getLatestNews(limit: number = 3): Promise<NewsWithRelations[]> {
-  try {
-    const news = await prisma.news.findMany({
-      where: { status: "PUBLISHED" },
-      orderBy: { publishedAt: "desc" },
-      take: limit,
-      include: {
-        category: true,
-        author: {
-          select: { name: true, role: true },
+  return withCache(`news:latest:${limit}`, 30, async () => {
+    try {
+      const news = await prisma.news.findMany({
+        where: { status: "PUBLISHED" },
+        orderBy: { publishedAt: "desc" },
+        take: limit,
+        include: {
+          category: true,
+          author: {
+            select: { name: true, role: true },
+          },
         },
-      },
-    });
+      });
 
-    if (news && news.length > 0) {
-      return news as unknown as NewsWithRelations[];
+      if (news && news.length > 0) {
+        return news as unknown as NewsWithRelations[];
+      }
+    } catch {
+      console.warn("Neon query for latest news failed, using fallback.");
     }
-  } catch {
-    console.warn("Neon query for latest news failed, using fallback.");
-  }
 
-  return fallbackNews.slice(0, limit) as unknown as NewsWithRelations[];
+    return fallbackNews.slice(0, limit) as unknown as NewsWithRelations[];
+  });
 }
 
 /**
@@ -167,26 +170,28 @@ export async function getNewsPaginated(params: NewsQueryParams): Promise<Paginat
  * Mengambil detail berita berdasarkan slug
  */
 export async function getNewsBySlug(slug: string): Promise<NewsWithRelations | null> {
-  try {
-    const news = await prisma.news.findUnique({
-      where: { slug },
-      include: {
-        category: true,
-        author: {
-          select: { name: true, role: true },
+  return withCache(`news:slug:${slug}`, 30, async () => {
+    try {
+      const news = await prisma.news.findUnique({
+        where: { slug },
+        include: {
+          category: true,
+          author: {
+            select: { name: true, role: true },
+          },
         },
-      },
-    });
+      });
 
-    if (news) {
-      return news as unknown as NewsWithRelations;
+      if (news) {
+        return news as unknown as NewsWithRelations;
+      }
+    } catch {
+      console.warn(`Neon query for news slug ${slug} failed, using fallback.`);
     }
-  } catch {
-    console.warn(`Neon query for news slug ${slug} failed, using fallback.`);
-  }
 
-  const found = fallbackNews.find((n) => n.slug === slug);
-  return (found as unknown as NewsWithRelations) || null;
+    const found = fallbackNews.find((n) => n.slug === slug);
+    return (found as unknown as NewsWithRelations) || null;
+  });
 }
 
 /**
@@ -197,83 +202,89 @@ export async function getRelatedNews(
   categoryId?: string,
   limit: number = 3
 ): Promise<NewsWithRelations[]> {
-  try {
-    const news = await prisma.news.findMany({
-      where: {
-        status: "PUBLISHED",
-        slug: { not: currentSlug },
-        ...(categoryId ? { categoryId } : {}),
-      },
-      orderBy: { publishedAt: "desc" },
-      take: limit,
-      include: {
-        category: true,
-        author: {
-          select: { name: true, role: true },
+  return withCache(`news:related:${currentSlug}:${categoryId || "none"}:${limit}`, 30, async () => {
+    try {
+      const news = await prisma.news.findMany({
+        where: {
+          status: "PUBLISHED",
+          slug: { not: currentSlug },
+          ...(categoryId ? { categoryId } : {}),
         },
-      },
-    });
+        orderBy: { publishedAt: "desc" },
+        take: limit,
+        include: {
+          category: true,
+          author: {
+            select: { name: true, role: true },
+          },
+        },
+      });
 
-    if (news && news.length > 0) {
-      return news as unknown as NewsWithRelations[];
+      if (news && news.length > 0) {
+        return news as unknown as NewsWithRelations[];
+      }
+    } catch {
+      // fallback
     }
-  } catch {
-    // fallback
-  }
 
-  return fallbackNews
-    .filter((n) => n.slug !== currentSlug)
-    .slice(0, limit) as unknown as NewsWithRelations[];
+    return fallbackNews
+      .filter((n) => n.slug !== currentSlug)
+      .slice(0, limit) as unknown as NewsWithRelations[];
+  });
 }
 
 /**
  * Mengambil seluruh kategori berita untuk filter navigasi
  */
 export async function getNewsCategories(): Promise<NewsCategory[]> {
-  try {
-    const categories = await prisma.newsCategory.findMany({
-      orderBy: { name: "asc" },
-    });
+  return withCache("news:categories", 60, async () => {
+    try {
+      const categories = await prisma.newsCategory.findMany({
+        orderBy: { name: "asc" },
+      });
 
-    if (categories && categories.length > 0) {
-      return categories;
+      if (categories && categories.length > 0) {
+        return categories;
+      }
+    } catch {
+      console.warn("Neon query for categories failed, using fallback.");
     }
-  } catch {
-    console.warn("Neon query for categories failed, using fallback.");
-  }
 
-  return fallbackCategories;
+    return fallbackCategories;
+  });
 }
 
 /**
  * Mengambil daftar tahun rilis berita unik untuk dropdown filter
  */
 export async function getNewsYears(): Promise<number[]> {
-  try {
-    const news = await prisma.news.findMany({
-      where: { status: "PUBLISHED", publishedAt: { not: null } },
-      select: { publishedAt: true },
-      distinct: ["publishedAt"],
-    });
-
-    if (news && news.length > 0) {
-      const years = new Set<number>();
-      news.forEach((n) => {
-        if (n.publishedAt) {
-          years.add(new Date(n.publishedAt).getFullYear());
-        }
+  return withCache("news:years", 60, async () => {
+    try {
+      const news = await prisma.news.findMany({
+        where: { status: "PUBLISHED", publishedAt: { not: null } },
+        select: { publishedAt: true },
+        distinct: ["publishedAt"],
       });
-      return Array.from(years).sort((a, b) => b - a);
-    }
-  } catch {
-    // ignore
-  }
 
-  const years = new Set<number>();
-  fallbackNews.forEach((n) => {
-    if (n.publishedAt) {
-      years.add(new Date(n.publishedAt).getFullYear());
+      if (news && news.length > 0) {
+        const years = new Set<number>();
+        news.forEach((n) => {
+          if (n.publishedAt) {
+            years.add(new Date(n.publishedAt).getFullYear());
+          }
+        });
+        return Array.from(years).sort((a, b) => b - a);
+      }
+    } catch {
+      // ignore
     }
+
+    const years = new Set<number>();
+    fallbackNews.forEach((n) => {
+      if (n.publishedAt) {
+        years.add(new Date(n.publishedAt).getFullYear());
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
   });
-  return Array.from(years).sort((a, b) => b - a);
 }

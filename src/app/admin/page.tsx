@@ -13,37 +13,45 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
+import { withCache } from "@/lib/cache";
+
 export default async function AdminDashboardPage() {
-  let kekCount = 7;
-  let operatingCount = 5;
-  let newsCount = 3;
-  let docCount = 3;
-  let reportCount = 3;
-  let galleryCount = 6;
-  let userCount = 2;
+  const stats = await withCache("admin:dashboard:stats", 15, async () => {
+    let kekCount = 7;
+    let operatingCount = 5;
+    let newsCount = 3;
+    let docCount = 3;
+    let reportCount = 3;
+    let galleryCount = 6;
+    let userCount = 2;
 
-  try {
-    const [keks, news, docs, reports, galleries, users] = await Promise.all([
-      prisma.kEK.findMany({ select: { status: true } }),
-      prisma.news.count(),
-      prisma.document.count(),
-      prisma.report.count(),
-      prisma.gallery.count(),
-      prisma.user.count(),
-    ]);
+    try {
+      const [keks, news, docs, reports, galleries, users] = await Promise.all([
+        prisma.kEK.findMany({ select: { status: true } }),
+        prisma.news.count(),
+        prisma.document.count(),
+        prisma.report.count(),
+        prisma.gallery.count(),
+        prisma.user.count(),
+      ]);
 
-    if (keks.length > 0) {
-      kekCount = keks.length;
-      operatingCount = keks.filter((k) => k.status === "BEROPERASI").length;
+      if (keks.length > 0) {
+        kekCount = keks.length;
+        operatingCount = keks.filter((k) => k.status === "BEROPERASI").length;
+      }
+      if (news > 0) newsCount = news;
+      if (docs > 0) docCount = docs;
+      if (reports > 0) reportCount = reports;
+      if (galleries > 0) galleryCount = galleries;
+      if (users > 0) userCount = users;
+    } catch {
+      // Fallback data values remain
     }
-    if (news > 0) newsCount = news;
-    if (docs > 0) docCount = docs;
-    if (reports > 0) reportCount = reports;
-    if (galleries > 0) galleryCount = galleries;
-    if (users > 0) userCount = users;
-  } catch {
-    // Fallback data values remain
-  }
+
+    return { kekCount, operatingCount, newsCount, docCount, reportCount, galleryCount, userCount };
+  });
+
+  const { kekCount, operatingCount, newsCount, docCount, reportCount, galleryCount, userCount } = stats;
 
   return (
     <div className="space-y-8">
