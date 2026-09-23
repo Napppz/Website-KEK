@@ -1,2 +1,2 @@
-// Components for News & Press releases (NewsCard, NewsFilter, NewsDetail, LatestNewsCarousel)
-export {};
+export * from "./news-card";
+export * from "./news-filter-client";

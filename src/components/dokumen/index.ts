@@ -1,2 +1,1 @@
-// Components for Legal documents & JDIH (DocumentTable, DocumentFilter, DocumentPreview)
-export {};
+export * from "./document-filter-client";
