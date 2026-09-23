@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   TrendingUp,
   LogIn,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -166,7 +167,16 @@ export function Header() {
         </nav>
 
         {/* CTA & Mobile Toggle */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          <Link
+            href="/search"
+            className="p-2 text-slate-600 hover:text-[#0f284e] hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold"
+            aria-label="Pencarian Global"
+          >
+            <Search className="w-4 h-4 text-slate-500" />
+            <span className="hidden md:inline">Cari</span>
+          </Link>
+
           <Link href="/investasi" className="hidden sm:inline-flex">
             <Button size="sm" variant="default" className="font-semibold gap-1.5">
               <TrendingUp className="w-4 h-4 text-amber-400" />

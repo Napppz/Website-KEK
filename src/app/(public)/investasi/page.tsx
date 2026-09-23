@@ -11,26 +11,41 @@ import { PageHeader } from "@/components/common/page-header";
 import { SectionHeader } from "@/components/common/section-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { InvestmentCharts } from "@/components/investment/investment-charts";
+import { getInvestmentOverview } from "@/lib/data/investment";
 
 export const metadata: Metadata = {
-  title: "Panduan & Insentif Investasi — KEK Indonesia",
+  title: "Statistik & Panduan Insentif Investasi — KEK Indonesia",
   description:
-    "Fasilitas dan insentif penanaman modal terlengkap di Kawasan Ekonomi Khusus Indonesia: Tax Holiday 100%, Tax Allowance, fasilitas kepabeanan, dan pelayanan perizinan terpadu.",
+    "Data realisasi investasi dan fasilitas penanaman modal terlengkap di Kawasan Ekonomi Khusus Indonesia: Tax Holiday 100%, Tax Allowance, kepabeanan, dan pelayanan OSS.",
 };
 
-export default function InvestasiPage() {
+export default async function InvestasiPage() {
+  const investmentOverview = await getInvestmentOverview();
+
   return (
     <div className="flex flex-col min-h-screen">
       <PageHeader
-        badge="Peluang Investasi"
+        badge="Peluang & Statistik Investasi"
         title="Investasi di Kawasan Ekonomi Khusus"
-        description="Pemerintah Republik Indonesia menawarkan kepastian hukum dan paket insentif fiskal serta non-fiskal terlengkap di Asia Tenggara untuk mempercepat pengembalian modal dan efisiensi rantai pasok industri Anda."
+        description="Pemerintah Republik Indonesia menawarkan kepastian hukum, transparansi realisasi modal, dan paket insentif fiskal terlengkap di Asia Tenggara untuk mempercepat pengembalian modal bisnis Anda."
         breadcrumbs={[{ label: "Investasi" }]}
       />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-16 space-y-16">
-        {/* 1. INSENTIF FISKAL UTAMA */}
-        <div id="fasilitas-fiskal" className="space-y-8 scroll-mt-24">
+      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-12 space-y-16">
+        {/* 1. ANALITIK & STATISTIK INVESTASI DINAMIS */}
+        <div id="statistik-investasi" className="space-y-6">
+          <SectionHeader
+            badge="Capaian Nasional"
+            title="Statistik Realisasi Modal & Tenaga Kerja"
+            description="Gambaran data agregat realisasi penanaman modal dalam negeri (PMDN) dan luar negeri (PMA) di seluruh Kawasan Ekonomi Khusus terdaftar."
+          />
+
+          <InvestmentCharts data={investmentOverview} />
+        </div>
+
+        {/* 2. INSENTIF FISKAL UTAMA */}
+        <div id="fasilitas-fiskal" className="space-y-8 pt-8 border-t border-slate-200 scroll-mt-24">
           <SectionHeader
             badge="Insentif Fiskal"
             title="Keringanan Pajak & Kepabeanan"
@@ -85,7 +100,7 @@ export default function InvestasiPage() {
           </div>
         </div>
 
-        {/* 2. KEMUDAHAN NON-FISKAL & BERUSAHA */}
+        {/* 3. KEMUDAHAN NON-FISKAL & BERUSAHA */}
         <div id="kemudahan-berusaha" className="space-y-8 pt-8 border-t border-slate-200 scroll-mt-24">
           <SectionHeader
             badge="Kemudahan Berusaha"
@@ -124,7 +139,7 @@ export default function InvestasiPage() {
           </div>
         </div>
 
-        {/* 3. PROSEDUR INVESTASI */}
+        {/* 4. PROSEDUR INVESTASI */}
         <div id="prosedur" className="space-y-8 pt-8 border-t border-slate-200 scroll-mt-24">
           <SectionHeader
             badge="Alur Proses"
@@ -134,7 +149,7 @@ export default function InvestasiPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="p-6 rounded-xl border border-slate-200 bg-white shadow-xs space-y-3 relative">
-              <span className="w-7 h-7 rounded-full bg-[#0f284e] text-white flex items-center justify-center font-bold text-xs">
+              <span className="w-7 h-7 rounded-full bg-[#0b1f3c] text-white flex items-center justify-center font-bold text-xs">
                 1
               </span>
               <h4 className="font-bold text-slate-900 text-sm">Pemilihan Kawasan & Lahan</h4>
@@ -144,7 +159,7 @@ export default function InvestasiPage() {
             </div>
 
             <div className="p-6 rounded-xl border border-slate-200 bg-white shadow-xs space-y-3 relative">
-              <span className="w-7 h-7 rounded-full bg-[#0f284e] text-white flex items-center justify-center font-bold text-xs">
+              <span className="w-7 h-7 rounded-full bg-[#0b1f3c] text-white flex items-center justify-center font-bold text-xs">
                 2
               </span>
               <h4 className="font-bold text-slate-900 text-sm">Registrasi Akun OSS</h4>
@@ -154,7 +169,7 @@ export default function InvestasiPage() {
             </div>
 
             <div className="p-6 rounded-xl border border-slate-200 bg-white shadow-xs space-y-3 relative">
-              <span className="w-7 h-7 rounded-full bg-[#0f284e] text-white flex items-center justify-center font-bold text-xs">
+              <span className="w-7 h-7 rounded-full bg-[#0b1f3c] text-white flex items-center justify-center font-bold text-xs">
                 3
               </span>
               <h4 className="font-bold text-slate-900 text-sm">Penetapan Fasilitas KEK</h4>
@@ -164,7 +179,7 @@ export default function InvestasiPage() {
             </div>
 
             <div className="p-6 rounded-xl border border-slate-200 bg-white shadow-xs space-y-3 relative">
-              <span className="w-7 h-7 rounded-full bg-[#0f284e] text-white flex items-center justify-center font-bold text-xs">
+              <span className="w-7 h-7 rounded-full bg-[#0b1f3c] text-white flex items-center justify-center font-bold text-xs">
                 4
               </span>
               <h4 className="font-bold text-slate-900 text-sm">Konstruksi & Operasional</h4>

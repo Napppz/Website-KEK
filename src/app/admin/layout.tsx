@@ -9,8 +9,11 @@ import {
   Image as ImageIcon,
   Users,
   ArrowLeft,
+  UserCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { auth } from "@/lib/auth";
+import { LogoutButton } from "@/components/admin/logout-button";
 
 const adminNav = [
   { name: "Ringkasan", href: "/admin", icon: LayoutDashboard },
@@ -22,11 +25,16 @@ const adminNav = [
   { name: "Kelola Pengguna", href: "/admin/users", icon: Users },
 ];
 
-export default function AdminLayout({
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await auth();
+  const userName = session?.user?.name || "Administrator";
+  const userEmail = session?.user?.email || "admin@kek.go.id";
+  const userRole = session?.user?.role || "SUPER_ADMIN";
+
   return (
     <div className="min-h-screen flex bg-slate-100">
       {/* Admin Sidebar */}
@@ -67,8 +75,9 @@ export default function AdminLayout({
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Kembali ke Website</span>
           </Link>
-          <div className="px-3 py-2 text-[11px] text-slate-500">
-            Masuk sebagai: <strong className="text-slate-300">Administrator</strong>
+          <div className="px-3 py-2 text-[11px] text-slate-400 flex items-center gap-1.5">
+            <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="truncate">{userName}</span>
           </div>
         </div>
       </aside>
@@ -78,12 +87,14 @@ export default function AdminLayout({
         <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Badge variant="emerald">Admin Mode</Badge>
-            <span className="text-xs text-slate-500">
-              Sistem Manajemen Konten KEK Indonesia
-            </span>
+            <Badge variant="amber" className="text-[10px] font-bold">
+              {userRole}
+            </Badge>
           </div>
-          <div className="flex items-center gap-3 text-xs text-slate-600">
-            <span>admin@kek.go.id</span>
+          <div className="flex items-center gap-4 text-xs text-slate-600">
+            <span className="font-semibold text-slate-700">{userEmail}</span>
+            <div className="h-4 w-px bg-slate-200" />
+            <LogoutButton />
           </div>
         </header>
 

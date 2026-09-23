@@ -1,42 +1,70 @@
 import { Prisma, KekStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fallbackKeks } from "./fallback";
-import type { KEK, Investment, News } from "@/types";
+import type { KEK, Investment, News, NewsCategory } from "@/types";
+import { KekQueryParams } from "../validations/query";
 
 export interface KekStats {
   totalKek: number;
   totalProvinces: number;
   totalInvestment: number;
   totalLabor: number;
+  selectedYear?: number;
+  availableYears: number[];
   isDevelopmentData?: boolean;
 }
 
-export type KekWithDetails = KEK & {
-  investments: Investment[];
-  news?: News[];
+export type RelatedNews = News & {
+  category?: NewsCategory;
+  author?: { name: string };
 };
 
+export type KekWithDetails = KEK & {
+  investments: Investment[];
+  news?: RelatedNews[];
+};
+
+export interface PaginatedKeks {
+  data: KekWithDetails[];
+  total: number;
+  totalPages: number;
+  currentPage: number;
+  limit: number;
+}
+
 /**
- * Mengambil ringkasan statistik nasional KEK (Total Kawasan, Provinsi, Akumulasi Investasi, Tenaga Kerja)
+ * Mengambil ringkasan statistik nasional KEK dengan opsi filter tahun
  */
-export async function getKekStats(): Promise<KekStats> {
+export async function getKekStats(selectedYear?: number): Promise<KekStats> {
   try {
-    const keks = await prisma.kEK.findMany({
-      include: {
-        investments: true,
-      },
-    });
+    const [keks, allInvestments] = await Promise.all([
+      prisma.kEK.findMany({
+        select: { id: true, province: true },
+      }),
+      prisma.investment.findMany({
+        select: {
+          year: true,
+          investmentValue: true,
+          employeeCount: true,
+        },
+      }),
+    ]);
 
     if (keks && keks.length > 0) {
       const uniqueProvinces = new Set(keks.map((k) => k.province)).size;
+      const availableYears = Array.from(new Set(allInvestments.map((i) => i.year))).sort((a, b) => b - a);
+
+      const targetYear = selectedYear && availableYears.includes(selectedYear)
+        ? selectedYear
+        : (availableYears[0] || 2025);
+
+      const filteredInvestments = allInvestments.filter((i) => i.year === targetYear);
       let totalInvestment = 0;
       let totalLabor = 0;
 
-      for (const kek of keks) {
-        for (const inv of kek.investments) {
-          totalInvestment += Number(inv.investmentValue);
-          totalLabor += inv.employeeCount;
-        }
+      for (const inv of filteredInvestments) {
+        totalInvestment += Number(inv.investmentValue);
+        totalLabor += inv.employeeCount;
       }
 
       return {
@@ -44,35 +72,48 @@ export async function getKekStats(): Promise<KekStats> {
         totalProvinces: uniqueProvinces,
         totalInvestment: totalInvestment || 177500000000000,
         totalLabor: totalLabor || 64500,
+        selectedYear: targetYear,
+        availableYears: availableYears.length > 0 ? availableYears : [2024, 2025, 2026],
         isDevelopmentData: false,
       };
     }
   } catch {
-    console.warn("Neon PostgreSQL belum terhubung, menggunakan data development KEK.");
+    console.warn("Neon PostgreSQL query failed, using fallback stats.");
   }
 
-  // Fallback ke data development
+  // Fallback calculation
   const uniqueProvinces = new Set(fallbackKeks.map((k) => k.province)).size;
+  const allInvYears: number[] = [];
+  fallbackKeks.forEach((k) => k.investments.forEach((i) => allInvYears.push(i.year)));
+  const availableYears = Array.from(new Set(allInvYears)).sort((a, b) => b - a);
+  const targetYear = selectedYear && availableYears.includes(selectedYear)
+    ? selectedYear
+    : (availableYears[0] || 2025);
+
   let totalInvestment = 0;
   let totalLabor = 0;
   for (const kek of fallbackKeks) {
     for (const inv of kek.investments) {
-      totalInvestment += Number(inv.investmentValue);
-      totalLabor += inv.employeeCount;
+      if (inv.year === targetYear) {
+        totalInvestment += Number(inv.investmentValue);
+        totalLabor += inv.employeeCount;
+      }
     }
   }
 
   return {
     totalKek: fallbackKeks.length,
     totalProvinces: uniqueProvinces,
-    totalInvestment,
-    totalLabor,
+    totalInvestment: totalInvestment || 177500000000000,
+    totalLabor: totalLabor || 64500,
+    selectedYear: targetYear,
+    availableYears: availableYears.length > 0 ? availableYears : [2024, 2025, 2026],
     isDevelopmentData: true,
   };
 }
 
 /**
- * Mengambil data KEK unggulan untuk homepage
+ * Mengambil KEK unggulan untuk showcase di homepage
  */
 export async function getFeaturedKeks(limit: number = 4): Promise<KekWithDetails[]> {
   try {
@@ -91,86 +132,130 @@ export async function getFeaturedKeks(limit: number = 4): Promise<KekWithDetails
       return keks as KekWithDetails[];
     }
   } catch {
-    console.warn("Neon PostgreSQL query failed, using fallback featured KEKs.");
+    // ignore
   }
 
   return fallbackKeks.slice(0, limit) as KekWithDetails[];
 }
 
 /**
- * Mengambil seluruh data KEK dengan dukungan pencarian & filter
+ * Mengambil data KEK berhalaman (Server-side Pagination, Whitelist Sorting, Multi-field Search, Filter)
  */
-export async function getAllKeks(params?: {
-  search?: string;
-  province?: string;
-  focus?: string;
-  status?: string;
-}): Promise<KekWithDetails[]> {
+export async function getKeksPaginated(params: KekQueryParams): Promise<PaginatedKeks> {
+  const { q, province, focus, status, sort, page = 1, limit = 9 } = params;
+  const skip = (page - 1) * limit;
+
   try {
     const where: Prisma.KEKWhereInput = {};
 
-    if (params?.status && params.status !== "ALL") {
-      where.status = params.status as KekStatus;
+    if (status && status !== "ALL") {
+      where.status = status as KekStatus;
     }
 
-    if (params?.province && params.province !== "ALL") {
-      where.province = { contains: params.province, mode: "insensitive" };
+    if (province && province !== "ALL") {
+      where.province = { equals: province, mode: "insensitive" };
     }
 
-    if (params?.search) {
+    if (focus && focus !== "ALL") {
+      where.focus = { contains: focus, mode: "insensitive" };
+    }
+
+    if (q && q.trim() !== "") {
+      const searchTerms = q.trim();
       where.OR = [
-        { name: { contains: params.search, mode: "insensitive" } },
-        { province: { contains: params.search, mode: "insensitive" } },
-        { city: { contains: params.search, mode: "insensitive" } },
-        { focus: { contains: params.search, mode: "insensitive" } },
+        { name: { contains: searchTerms, mode: "insensitive" } },
+        { province: { contains: searchTerms, mode: "insensitive" } },
+        { city: { contains: searchTerms, mode: "insensitive" } },
+        { focus: { contains: searchTerms, mode: "insensitive" } },
+        { description: { contains: searchTerms, mode: "insensitive" } },
       ];
     }
 
-    const keks = await prisma.kEK.findMany({
-      where,
-      orderBy: { name: "asc" },
-      include: {
-        investments: {
-          orderBy: { year: "desc" },
-        },
-      },
-    });
+    // Whitelist sorting
+    let orderBy: Prisma.KEKOrderByWithRelationInput = { name: "asc" };
+    if (sort === "name-desc") orderBy = { name: "desc" };
+    else if (sort === "latest") orderBy = { createdAt: "desc" };
+    else if (sort === "oldest") orderBy = { createdAt: "asc" };
 
-    if (keks && keks.length > 0) {
-      return keks as KekWithDetails[];
-    }
+    const [total, keks] = await Promise.all([
+      prisma.kEK.count({ where }),
+      prisma.kEK.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
+        include: {
+          investments: {
+            orderBy: { year: "desc" },
+            take: 1,
+          },
+        },
+      }),
+    ]);
+
+    return {
+      data: keks as KekWithDetails[],
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+      currentPage: page,
+      limit,
+    };
   } catch {
     console.warn("Neon PostgreSQL query failed, filtering fallback KEKs.");
   }
 
-  let result = [...fallbackKeks];
+  // Fallback pagination & sorting
+  let filtered = [...fallbackKeks];
 
-  if (params?.status && params.status !== "ALL") {
-    result = result.filter((k) => k.status === params.status);
+  if (status && status !== "ALL") {
+    filtered = filtered.filter((k) => k.status === status);
   }
 
-  if (params?.province && params.province !== "ALL") {
-    result = result.filter((k) =>
-      k.province.toLowerCase().includes(params.province!.toLowerCase())
-    );
+  if (province && province !== "ALL") {
+    filtered = filtered.filter((k) => k.province.toLowerCase() === province.toLowerCase());
   }
 
-  if (params?.search) {
-    const q = params.search.toLowerCase();
-    result = result.filter(
+  if (focus && focus !== "ALL") {
+    filtered = filtered.filter((k) => k.focus.toLowerCase().includes(focus.toLowerCase()));
+  }
+
+  if (q && q.trim() !== "") {
+    const term = q.trim().toLowerCase();
+    filtered = filtered.filter(
       (k) =>
-        k.name.toLowerCase().includes(q) ||
-        k.province.toLowerCase().includes(q) ||
-        k.city.toLowerCase().includes(q) ||
-        k.focus.toLowerCase().includes(q)
+        k.name.toLowerCase().includes(term) ||
+        k.province.toLowerCase().includes(term) ||
+        k.city.toLowerCase().includes(term) ||
+        k.focus.toLowerCase().includes(term) ||
+        k.description.toLowerCase().includes(term)
     );
   }
 
-  return result as KekWithDetails[];
+  // Sorting
+  if (sort === "name-desc") {
+    filtered.sort((a, b) => b.name.localeCompare(a.name));
+  } else if (sort === "latest") {
+    filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } else if (sort === "oldest") {
+    filtered.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  } else {
+    filtered.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  const total = filtered.length;
+  const paginatedData = filtered.slice(skip, skip + limit);
+
+  return {
+    data: paginatedData as KekWithDetails[],
+    total,
+    totalPages: Math.ceil(total / limit) || 1,
+    currentPage: page,
+    limit,
+  };
 }
 
 /**
- * Mengambil detail KEK berdasarkan slug
+ * Mengambil detail KEK berdasarkan slug langsung dari database Neon
  */
 export async function getKekBySlug(slug: string): Promise<KekWithDetails | null> {
   try {
@@ -182,7 +267,12 @@ export async function getKekBySlug(slug: string): Promise<KekWithDetails | null>
         },
         news: {
           where: { status: "PUBLISHED" },
-          take: 3,
+          take: 4,
+          orderBy: { publishedAt: "desc" },
+          include: {
+            category: true,
+            author: { select: { name: true } },
+          },
         },
       },
     });
@@ -196,6 +286,29 @@ export async function getKekBySlug(slug: string): Promise<KekWithDetails | null>
 
   const found = fallbackKeks.find((k) => k.slug === slug);
   return (found as KekWithDetails) || null;
+}
+
+/**
+ * Mengambil daftar seluruh KEK untuk map & selector
+ */
+export async function getAllKeks(): Promise<KekWithDetails[]> {
+  try {
+    const keks = await prisma.kEK.findMany({
+      orderBy: { name: "asc" },
+      include: {
+        investments: {
+          orderBy: { year: "desc" },
+          take: 1,
+        },
+      },
+    });
+    if (keks && keks.length > 0) {
+      return keks as KekWithDetails[];
+    }
+  } catch {
+    // fallback
+  }
+  return fallbackKeks as KekWithDetails[];
 }
 
 /**
@@ -216,4 +329,40 @@ export async function getKekProvinces(): Promise<string[]> {
   }
 
   return Array.from(new Set(fallbackKeks.map((k) => k.province))).sort();
+}
+
+/**
+ * Mengambil daftar sektor fokus unik untuk opsi filter
+ */
+export async function getKekFoci(): Promise<string[]> {
+  try {
+    const keks = await prisma.kEK.findMany({
+      select: { focus: true },
+      distinct: ["focus"],
+      orderBy: { focus: "asc" },
+    });
+    if (keks && keks.length > 0) {
+      // Extract unique individual sectors
+      const rawFoci = keks.map((k) => k.focus);
+      const sectors = new Set<string>();
+      rawFoci.forEach((f) => {
+        f.split(/[,&]/).forEach((part) => {
+          const trimmed = part.trim();
+          if (trimmed.length > 2) sectors.add(trimmed);
+        });
+      });
+      return Array.from(sectors).sort();
+    }
+  } catch {
+    // ignore
+  }
+
+  const sectors = new Set<string>();
+  fallbackKeks.forEach((k) => {
+    k.focus.split(/[,&]/).forEach((part) => {
+      const trimmed = part.trim();
+      if (trimmed.length > 2) sectors.add(trimmed);
+    });
+  });
+  return Array.from(sectors).sort();
 }

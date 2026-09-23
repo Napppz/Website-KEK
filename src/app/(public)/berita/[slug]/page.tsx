@@ -5,8 +5,9 @@ import Link from "next/link";
 import { Calendar, User, ArrowLeft, Tag, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/common/page-header";
+import { SocialShare } from "@/components/common/social-share";
 import { NewsCard } from "@/components/berita/news-card";
-import { getNewsBySlug, getLatestNews } from "@/lib/data/news";
+import { getNewsBySlug, getRelatedNews } from "@/lib/data/news";
 import { formatDate } from "@/lib/utils";
 
 interface PageProps {
@@ -31,6 +32,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       description: news.excerpt,
       images: news.thumbnailUrl ? [{ url: news.thumbnailUrl }] : undefined,
     },
+    twitter: {
+      card: "summary_large_image",
+      title: news.title,
+      description: news.excerpt,
+      images: news.thumbnailUrl ? [news.thumbnailUrl] : undefined,
+    },
   };
 }
 
@@ -42,8 +49,7 @@ export default async function NewsDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const latestNews = await getLatestNews(3);
-  const relatedNews = latestNews.filter((n) => n.id !== news.id).slice(0, 2);
+  const relatedNews = await getRelatedNews(news.slug, news.categoryId, 2);
 
   const defaultImage =
     "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80";
@@ -59,12 +65,12 @@ export default async function NewsDetailPage({ params }: PageProps) {
         ]}
       />
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-8 py-12 space-y-10 w-full">
+      <div className="max-w-4xl mx-auto px-4 sm:px-8 py-10 space-y-8 w-full">
         {/* Back Link & Meta bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200">
           <Link
             href="/berita"
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-[#0b1f3c] transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             Kembali ke Semua Berita
@@ -95,7 +101,7 @@ export default async function NewsDetailPage({ params }: PageProps) {
         </div>
 
         {/* Lead Excerpt */}
-        <div className="p-4 sm:p-5 rounded-xl bg-slate-50 border-l-4 border-blue-800 text-slate-700 font-medium text-sm sm:text-base leading-relaxed italic">
+        <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border-l-4 border-blue-800 text-slate-700 font-medium text-sm sm:text-base leading-relaxed italic">
           {news.excerpt}
         </div>
 
@@ -104,6 +110,9 @@ export default async function NewsDetailPage({ params }: PageProps) {
           className="prose prose-slate max-w-none text-sm sm:text-base leading-relaxed space-y-4 text-slate-800"
           dangerouslySetInnerHTML={{ __html: news.content }}
         />
+
+        {/* Social Sharing */}
+        <SocialShare title={news.title} />
 
         {/* Tags & Disclaimer Box */}
         <div className="pt-6 border-t border-slate-200 space-y-4">

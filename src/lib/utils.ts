@@ -36,6 +36,8 @@ export function formatCurrencyIDR(
   }).format(numericAmount);
 }
 
+export const formatCurrency = formatCurrencyIDR;
+
 /**
  * Standard integer / decimal localized number formatter
  */

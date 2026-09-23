@@ -2,9 +2,99 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { fallbackDocuments } from "./fallback";
 import type { Document } from "@/types";
+import { DocumentQueryParams } from "../validations/query";
+
+export interface PaginatedDocuments {
+  data: Document[];
+  total: number;
+  totalPages: number;
+  currentPage: number;
+  limit: number;
+}
 
 /**
- * Mengambil daftar dokumen regulasi JDIH dengan filter
+ * Mengambil daftar dokumen regulasi JDIH dengan server-side pagination dan filter
+ */
+export async function getDocumentsPaginated(params: DocumentQueryParams): Promise<PaginatedDocuments> {
+  const { q, category, year, page = 1, limit = 10 } = params;
+  const skip = (page - 1) * limit;
+
+  try {
+    const where: Prisma.DocumentWhereInput = {};
+
+    if (category && category !== "ALL") {
+      where.category = category;
+    }
+
+    if (year && !isNaN(year) && year > 0) {
+      where.year = year;
+    }
+
+    if (q && q.trim() !== "") {
+      const term = q.trim();
+      where.OR = [
+        { title: { contains: term, mode: "insensitive" } },
+        { documentNumber: { contains: term, mode: "insensitive" } },
+        { description: { contains: term, mode: "insensitive" } },
+      ];
+    }
+
+    const [total, docs] = await Promise.all([
+      prisma.document.count({ where }),
+      prisma.document.findMany({
+        where,
+        orderBy: { year: "desc" },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      data: docs,
+      total,
+      totalPages: Math.ceil(total / limit) || 1,
+      currentPage: page,
+      limit,
+    };
+  } catch {
+    console.warn("Neon query for documents failed, using fallback.");
+  }
+
+  // Fallback
+  let filtered = [...fallbackDocuments];
+
+  if (category && category !== "ALL") {
+    filtered = filtered.filter((d) => d.category === category);
+  }
+
+  if (year && !isNaN(year) && year > 0) {
+    filtered = filtered.filter((d) => d.year === year);
+  }
+
+  if (q && q.trim() !== "") {
+    const term = q.trim().toLowerCase();
+    filtered = filtered.filter(
+      (d) =>
+        d.title.toLowerCase().includes(term) ||
+        d.documentNumber.toLowerCase().includes(term) ||
+        (d.description && d.description.toLowerCase().includes(term))
+    );
+  }
+
+  const total = filtered.length;
+  const paginatedData = filtered.slice(skip, skip + limit);
+
+  return {
+    data: paginatedData,
+    total,
+    totalPages: Math.ceil(total / limit) || 1,
+    currentPage: page,
+    limit,
+  };
+}
+
+/**
+ * Mengambil daftar dokumen regulasi JDIH dengan filter (Legacy compatibility)
  */
 export async function getDocuments(params?: {
   search?: string;

@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Loader2, Inbox, AlertTriangle, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Inbox, AlertTriangle, RefreshCw, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export function LoadingState({ message = "Memuat data portal..." }: { message?: string }) {
@@ -14,28 +15,39 @@ export function LoadingState({ message = "Memuat data portal..." }: { message?: 
 }
 
 export function EmptyState({
-  title = "Tidak ada data yang ditemukan",
-  description = "Silakan coba ubah kata kunci pencarian atau filter yang Anda gunakan.",
-  actionText,
+  title = "Data tidak ditemukan",
+  description = "Periksa kembali kata kunci atau filter yang digunakan.",
+  actionText = "Reset Filter",
+  actionHref,
   onAction,
 }: {
   title?: string;
   description?: string;
   actionText?: string;
+  actionHref?: string;
   onAction?: () => void;
 }) {
   return (
-    <div className="py-16 px-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/50 flex flex-col items-center justify-center text-center space-y-3">
-      <div className="w-12 h-12 rounded-full bg-slate-200/70 text-slate-500 flex items-center justify-center">
-        <Inbox className="w-6 h-6" />
+    <div className="py-16 px-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 flex flex-col items-center justify-center text-center space-y-3">
+      <div className="w-14 h-14 rounded-2xl bg-white shadow-xs border border-slate-200 text-slate-400 flex items-center justify-center">
+        <Inbox className="w-7 h-7 text-slate-400" />
       </div>
       <h3 className="text-base font-bold text-slate-900">{title}</h3>
-      <p className="text-xs text-slate-500 max-w-sm leading-relaxed">{description}</p>
-      {actionText && onAction && (
-        <Button variant="outline" size="sm" onClick={onAction} className="mt-2 text-xs">
+      <p className="text-xs text-slate-500 max-w-md leading-relaxed">{description}</p>
+      
+      {actionHref ? (
+        <Link href={actionHref}>
+          <Button variant="outline" size="sm" className="mt-2 text-xs font-semibold gap-1.5 bg-white border-slate-300 hover:bg-slate-100">
+            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+            {actionText}
+          </Button>
+        </Link>
+      ) : actionText && onAction ? (
+        <Button variant="outline" size="sm" onClick={onAction} className="mt-2 text-xs font-semibold gap-1.5 bg-white border-slate-300 hover:bg-slate-100">
+          <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
           {actionText}
         </Button>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -50,7 +62,7 @@ export function ErrorState({
   onRetry?: () => void;
 }) {
   return (
-    <div className="py-16 px-4 rounded-xl border border-red-200 bg-red-50/40 flex flex-col items-center justify-center text-center space-y-3">
+    <div className="py-16 px-4 rounded-2xl border border-red-200 bg-red-50/40 flex flex-col items-center justify-center text-center space-y-3">
       <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center">
         <AlertTriangle className="w-6 h-6" />
       </div>

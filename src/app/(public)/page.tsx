@@ -26,10 +26,20 @@ import { getLatestNews } from "@/lib/data/news";
 import { getDocuments } from "@/lib/data/document";
 import { formatCurrencyIDR, formatNumber } from "@/lib/utils";
 
-export default async function HomePage() {
+interface HomePageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}
+
+export default async function HomePage({ searchParams }: HomePageProps) {
+  const rawParams = await searchParams;
+  const yearParam =
+    typeof rawParams?.year === "string" && !isNaN(parseInt(rawParams.year, 10))
+      ? parseInt(rawParams.year, 10)
+      : undefined;
+
   // Fetch data secara paralel dari Neon PostgreSQL (dengan graceful development fallback)
   const [stats, featuredKeks, allKeks, latestNews, recentDocs] = await Promise.all([
-    getKekStats(),
+    getKekStats(yearParam),
     getFeaturedKeks(4),
     getAllKeks(),
     getLatestNews(3),
@@ -85,6 +95,32 @@ export default async function HomePage() {
             <Badge variant="amber" className="text-[10px]">Development Data</Badge>
           </div>
         )}
+
+        {/* Selector Tahun Realisasi Dinamis dari Database */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-3 border-b border-slate-100">
+          <div className="text-xs font-bold text-slate-700 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+            <span>Statistik Realisasi Penanaman Modal Nasional (Tahun {stats.selectedYear}):</span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-medium text-slate-400 mr-1 hidden sm:inline">Pilih Tahun:</span>
+            {stats.availableYears.map((yr) => (
+              <Link
+                key={yr}
+                href={`/?year=${yr}#statistik`}
+                scroll={false}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all ${
+                  stats.selectedYear === yr
+                    ? "bg-[#0b1f3c] text-white shadow-xs"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {yr}
+              </Link>
+            ))}
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <StatCard
