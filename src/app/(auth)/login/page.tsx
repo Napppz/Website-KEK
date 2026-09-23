@@ -157,7 +157,7 @@ function LoginForm() {
 
           <div className="text-center pt-2 border-t border-slate-800">
             <p className="text-[11px] text-slate-500">
-              Pengujian Default: <code className="text-slate-300">admin@kek.go.id</code> / <code className="text-slate-300">password123</code>
+              Pengujian Default: <code className="text-slate-300">admin@kek.go.id</code> / <code className="text-slate-300">AdminKEK2026!</code> (atau <code className="text-slate-300">password123</code>)
             </p>
           </div>
         </div>
