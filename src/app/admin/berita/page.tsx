@@ -1,55 +1,57 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Search, Edit2, Trash2, Newspaper, Calendar } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import Link from "next/link";
+import { Edit2, Trash2, Eye, CheckCircle, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { NewsDialog, type NewsData, type NewsCategoryItem } from "@/components/admin/news-dialog";
-import { formatDate } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { AdminDataTable, type Column, type FilterOption } from "@/components/admin/admin-data-table";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
-export default function AdminNewsPage() {
-  const [news, setNews] = React.useState<NewsData[]>([]);
-  const [categories, setCategories] = React.useState<NewsCategoryItem[]>([]);
+interface NewsItem {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+  publishedAt: string | null;
+  createdAt: string;
+  author?: { name: string };
+  category?: { id: string; name: string };
+  categoryId?: string;
+  kek?: { name: string };
+}
+
+export default function AdminBeritaPage() {
+  const { addToast } = useToast();
+  const [data, setData] = React.useState<NewsItem[]>([]);
+  const [categories, setCategories] = React.useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [searchTerm, setSearchTerm] = React.useState("");
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [selectedNews, setSelectedNews] = React.useState<NewsData | null>(null);
-
-  const loadNews = React.useCallback(async () => {
-    try {
-      const res = await fetch("/api/berita");
-      const json = await res.json();
-      if (json.success) {
-        setNews(json.data || []);
-      }
-    } catch (err) {
-      console.error("Failed fetching news", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const [deleteTarget, setDeleteTarget] = React.useState<NewsItem | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
 
   React.useEffect(() => {
     let isMounted = true;
     async function init() {
-      setIsLoading(true);
       try {
-        const res = await fetch("/api/berita");
-        const json = await res.json();
-        if (isMounted && json.success) {
-          setNews(json.data || []);
-        }
+        const [newsRes, catRes] = await Promise.all([
+          fetch("/api/berita"),
+          fetch("/api/kategori-berita"),
+        ]);
+        const newsJson = await newsRes.json();
+        const catJson = await catRes.json();
+
         if (isMounted) {
-          setCategories([
-            { id: "cat-1", name: "Siaran Pers", slug: "siaran-pers" },
-            { id: "cat-2", name: "Investasi & Ekonomi", slug: "investasi" },
-            { id: "cat-3", name: "Infrastruktur & Zona", slug: "infrastruktur" },
-            { id: "cat-4", name: "Kegiatan Lembaga", slug: "kegiatan" },
-          ]);
+          if (newsJson.success && Array.isArray(newsJson.data)) {
+            setData(newsJson.data);
+          }
+          if (catJson.success && Array.isArray(catJson.data)) {
+            setCategories(catJson.data);
+          }
         }
       } catch (err) {
-        console.error("Failed fetching news", err);
+        console.error("Gagal memuat berita:", err);
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -60,155 +62,277 @@ export default function AdminNewsPage() {
     };
   }, []);
 
-  const handleDelete = async (id: string, title: string) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus artikel berita "${title}"?`)) return;
-
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/berita/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/berita/${deleteTarget.id}`, { method: "DELETE" });
       const json = await res.json();
-      if (json.success) {
-        loadNews();
-      } else {
-        alert(json.error || "Gagal menghapus berita");
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Gagal menghapus artikel berita");
       }
-    } catch {
-      alert("Terjadi kesalahan sistem saat menghapus data.");
+
+      addToast({
+        title: "Berita Dihapus",
+        description: `Artikel "${deleteTarget.title}" berhasil dihapus.`,
+        type: "success",
+      });
+
+      setData((prev) => prev.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      addToast({
+        title: "Penghapusan Gagal",
+        description: err instanceof Error ? err.message : "Terjadi kesalahan sistem saat menghapus berita.",
+        type: "error",
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  const filtered = news.filter(
-    (n) =>
-      n.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (n.excerpt && n.excerpt.toLowerCase().includes(searchTerm.toLowerCase()))
+  const handleTogglePublish = async (item: NewsItem) => {
+    const nextStatus = item.status === "PUBLISHED" ? "DRAFT" : "PUBLISHED";
+    try {
+      const res = await fetch(`/api/berita/${item.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: nextStatus,
+          publishedAt: nextStatus === "PUBLISHED" ? new Date().toISOString() : null,
+        }),
+      });
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Gagal mengubah status publikasi");
+      }
+
+      addToast({
+        title: nextStatus === "PUBLISHED" ? "Berita Diterbitkan" : "Berita Dialihkan ke Draft",
+        description: `Status artikel "${item.title}" diubah menjadi ${nextStatus}.`,
+        type: "success",
+      });
+
+      setData((prev) =>
+        prev.map((n) =>
+          n.id === item.id
+            ? { ...n, status: nextStatus, publishedAt: nextStatus === "PUBLISHED" ? new Date().toISOString() : null }
+            : n
+        )
+      );
+    } catch (err) {
+      addToast({
+        title: "Gagal Mengubah Status",
+        description: err instanceof Error ? err.message : "Terjadi kesalahan saat update status.",
+        type: "error",
+      });
+    }
+  };
+
+  // Derive unique years
+  const uniqueYears = Array.from(
+    new Set(
+      data.map((d) =>
+        d.publishedAt
+          ? new Date(d.publishedAt).getFullYear().toString()
+          : new Date(d.createdAt).getFullYear().toString()
+      )
+    )
+  ).sort((a, b) => Number(b) - Number(a));
+
+  const formattedData = React.useMemo(
+    () =>
+      data.map((d) => ({
+        ...d,
+        year: d.publishedAt
+          ? new Date(d.publishedAt).getFullYear().toString()
+          : new Date(d.createdAt).getFullYear().toString(),
+      })),
+    [data]
   );
+
+  const filters: FilterOption[] = [
+    {
+      key: "status",
+      label: "Status Publikasi",
+      options: [
+        { label: "Published (Terbit)", value: "PUBLISHED" },
+        { label: "Draft (Konsep)", value: "DRAFT" },
+        { label: "Archived (Arsip)", value: "ARCHIVED" },
+      ],
+    },
+    {
+      key: "categoryId",
+      label: "Kategori",
+      options: categories.map((c) => ({ label: c.name, value: c.id })),
+    },
+    {
+      key: "year",
+      label: "Tahun",
+      options: uniqueYears.map((y) => ({ label: y, value: y })),
+    },
+  ];
+
+  const columns: Column<NewsItem>[] = [
+    {
+      key: "title",
+      header: "Judul Berita",
+      sortable: true,
+      render: (item) => (
+        <div className="space-y-0.5 max-w-[320px]">
+          <div className="font-bold text-slate-900 line-clamp-1" title={item.title}>
+            {item.title}
+          </div>
+          <div className="text-[11px] text-slate-400 font-mono truncate">/berita/{item.slug}</div>
+        </div>
+      ),
+    },
+    {
+      key: "categoryId",
+      header: "Kategori",
+      sortable: true,
+      render: (item) => (
+        <Badge variant="secondary" className="text-[10px] font-medium bg-slate-100 text-slate-700">
+          {item.category?.name || "Umum"}
+        </Badge>
+      ),
+    },
+    {
+      key: "author",
+      header: "Penulis",
+      render: (item) => (
+        <span className="text-xs text-slate-600 font-medium">
+          {item.author?.name || "Redaksi KEK"}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      sortable: true,
+      render: (item) => {
+        const variantMap = {
+          PUBLISHED: "emerald",
+          DRAFT: "amber",
+          ARCHIVED: "secondary",
+        } as const;
+        return (
+          <Badge
+            variant={variantMap[item.status] || "secondary"}
+            className="text-[10px] font-semibold"
+          >
+            {item.status === "PUBLISHED"
+              ? "Terbit"
+              : item.status === "DRAFT"
+              ? "Draft"
+              : "Arsip"}
+          </Badge>
+        );
+      },
+    },
+    {
+      key: "publishedAt",
+      header: "Tanggal Terbit",
+      sortable: true,
+      render: (item) => (
+        <span className="text-xs text-slate-600">
+          {item.publishedAt
+            ? new Date(item.publishedAt).toLocaleDateString("id-ID", {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+              })
+            : "- (Draft)"}
+        </span>
+      ),
+    },
+    {
+      key: "createdAt",
+      header: "Dibuat",
+      sortable: true,
+      render: (item) => (
+        <span className="text-xs text-slate-400">
+          {new Date(item.createdAt).toLocaleDateString("id-ID", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })}
+        </span>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Kelola Berita & Siaran Pers</h1>
-          <p className="text-xs text-slate-500">
-            Publikasi siaran resmi dan artikel informasi Kawasan Ekonomi Khusus.
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            setSelectedNews(null);
-            setIsDialogOpen(true);
-          }}
-          size="sm"
-          className="gap-2 bg-blue-700 hover:bg-blue-800 text-white"
-        >
-          <Plus className="w-4 h-4" />
-          Tambah Berita Baru
-        </Button>
-      </div>
-
-      {/* Filter & Search */}
-      <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-          <Input
-            placeholder="Cari berita berdasarkan judul atau isi ringkasan..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 text-xs h-9 bg-slate-50 border-slate-200"
-          />
-        </div>
-      </div>
-
-      {/* Table Content */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-        {isLoading ? (
-          <div className="p-8 text-center text-xs text-slate-500">Memuat data berita...</div>
-        ) : filtered.length === 0 ? (
-          <div className="p-8 text-center space-y-2">
-            <Newspaper className="w-8 h-8 text-slate-300 mx-auto" />
-            <p className="text-xs font-semibold text-slate-600">Tidak ada berita ditemukan</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-4">Judul Artikel</th>
-                  <th className="py-3 px-4">Kategori</th>
-                  <th className="py-3 px-4">Tanggal Rilis</th>
-                  <th className="py-3 px-4">Penulis</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {filtered.map((item) => {
-                  const isPublished = item.status === "PUBLISHED";
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-4 font-bold text-slate-900 max-w-sm truncate">
-                        {item.title}
-                        <span className="block text-[10px] font-normal text-slate-400">
-                          {item.slug}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-600 font-medium">
-                        <Badge variant="blue" className="text-[10px]">
-                          {item.category?.name || "Siaran Pers"}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">
-                        <span className="inline-flex items-center gap-1">
-                          <Calendar className="w-3 h-3 text-slate-400" />
-                          {formatDate((item.publishedAt || new Date()).toString())}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">
-                        {item.author?.name || "Administrator"}
-                      </td>
-                      <td className="py-3 px-4">
-                        <Badge variant={isPublished ? "emerald" : "outline"} className="text-[10px]">
-                          {isPublished ? "Terbit" : "Draft"}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4 text-right space-x-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedNews(item);
-                            setIsDialogOpen(true);
-                          }}
-                          className="h-7 w-7 p-0"
-                          title="Edit Berita"
-                        >
-                          <Edit2 className="w-3.5 h-3.5 text-blue-600" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDelete(item.id, item.title)}
-                          className="h-7 w-7 p-0 hover:bg-red-50 hover:border-red-200"
-                          title="Hapus Berita"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      <AdminDataTable
+        title="Manajemen Berita & Siaran Pers"
+        description="Publikasikan rilis resmi, perkembangan industri kawasan, dan agenda lembaga KEK."
+        createHref="/admin/berita/new"
+        createLabel="Tulis Berita Baru"
+        columns={columns}
+        data={formattedData}
+        isLoading={isLoading}
+        filters={filters}
+        searchPlaceholder="Cari judul, ringkasan, atau kata kunci artikel..."
+        searchKey={(item) => `${item.title} ${item.excerpt} ${item.category?.name || ""}`}
+        actions={(item) => (
+          <div className="flex items-center justify-end gap-1.5">
+            <Link
+              href={`/berita/${item.slug}`}
+              target="_blank"
+              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors"
+              title="Lihat artikel publik"
+            >
+              <Eye className="w-3.5 h-3.5" />
+            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleTogglePublish(item)}
+              className={`p-1.5 h-auto rounded-lg border ${
+                item.status === "PUBLISHED"
+                  ? "border-amber-200 text-amber-700 hover:bg-amber-50"
+                  : "border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+              }`}
+              title={item.status === "PUBLISHED" ? "Tarik ke Draft" : "Publikasikan"}
+            >
+              {item.status === "PUBLISHED" ? (
+                <Clock className="w-3.5 h-3.5" />
+              ) : (
+                <CheckCircle className="w-3.5 h-3.5" />
+              )}
+            </Button>
+            <Link
+              href={`/admin/berita/${item.id}/edit`}
+              className="p-1.5 rounded-lg border border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-slate-600 transition-colors"
+              title="Edit naskah berita"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDeleteTarget(item)}
+              className="p-1.5 h-auto rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700"
+              title="Hapus berita"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
           </div>
         )}
-      </div>
+      />
 
-      {/* News Modal Dialog */}
-      <NewsDialog
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
-        initialData={selectedNews}
-        categories={categories}
-        onSuccess={loadNews}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        title="Konfirmasi Hapus Berita"
+        description={`Apakah Anda yakin ingin menghapus artikel "${deleteTarget?.title}"? Tindakan ini permanen.`}
+        confirmLabel="Hapus Berita"
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleDelete}
+        onClose={() => setDeleteTarget(null)}
       />
     </div>
   );

@@ -5,3 +5,4 @@ export * from "./document";
 export * from "./report";
 export * from "./gallery";
 export * from "./investment";
+export * from "./category";

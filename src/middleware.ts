@@ -53,6 +53,14 @@ export async function middleware(req: NextRequest) {
       loginUrl.searchParams.set("callbackUrl", pathname);
       return NextResponse.redirect(loginUrl);
     }
+
+    // 3. Batasi akses rute khusus ADMIN (/admin/users)
+    if (pathname.startsWith("/admin/users")) {
+      const userRole = (sessionToken as { role?: string })?.role;
+      if (userRole !== "ADMIN" && userRole !== "SUPER_ADMIN") {
+        return NextResponse.redirect(new URL("/admin?error=unauthorized", req.url));
+      }
+    }
   }
 
   return NextResponse.next();

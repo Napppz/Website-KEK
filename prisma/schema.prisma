@@ -205,3 +205,21 @@ model Investment {
   @@index([year])
   @@map("investments")
 }
+
+/// Catatan audit jejak aktivitas perubahan konten dan sistem oleh administrator
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  userEmail String
+  userName  String
+  action    String   // CREATE, UPDATE, DELETE, PUBLISH, UNPUBLISH, ROLE_CHANGE
+  entity    String   // KEK, NEWS, CATEGORY, DOCUMENT, REPORT, GALLERY, INVESTMENT, USER
+  entityId  String?
+  metadata  String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([entity])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

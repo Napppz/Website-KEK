@@ -13,7 +13,7 @@ export const newsSchema = z.object({
   thumbnailUrl: z.string().url({ message: "URL thumbnail tidak valid" }).optional().or(z.literal("")),
   categoryId: z.string().min(1, { message: "Kategori berita wajib dipilih" }),
   kekId: z.string().optional().nullable(),
-  status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]).default("DRAFT"),
+  status: z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]),
   publishedAt: z.coerce.date().optional().nullable(),
 });
 

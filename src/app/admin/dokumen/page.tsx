@@ -1,45 +1,44 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Search, Edit2, Trash2, FileText, Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import Link from "next/link";
+import { Edit2, Trash2, FileText, Download, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { DocumentDialog, type DocumentData } from "@/components/admin/document-dialog";
+import { Button } from "@/components/ui/button";
+import { AdminDataTable, type Column, type FilterOption } from "@/components/admin/admin-data-table";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
+
+interface DocumentItem {
+  id: string;
+  title: string;
+  documentNumber: string;
+  year: number;
+  category: string;
+  fileUrl: string;
+  description?: string | null;
+  kek?: { name: string } | null;
+  createdAt: string;
+}
 
 export default function AdminDocumentPage() {
-  const [documents, setDocuments] = React.useState<DocumentData[]>([]);
+  const { addToast } = useToast();
+  const [data, setData] = React.useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [searchTerm, setSearchTerm] = React.useState("");
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [selectedDoc, setSelectedDoc] = React.useState<DocumentData | null>(null);
-
-  const loadDocs = React.useCallback(async () => {
-    try {
-      const res = await fetch("/api/dokumen");
-      const json = await res.json();
-      if (json.success) {
-        setDocuments(json.data || []);
-      }
-    } catch (err) {
-      console.error("Failed fetching documents", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const [deleteTarget, setDeleteTarget] = React.useState<DocumentItem | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
 
   React.useEffect(() => {
     let isMounted = true;
     async function init() {
-      setIsLoading(true);
       try {
         const res = await fetch("/api/dokumen");
         const json = await res.json();
-        if (isMounted && json.success) {
-          setDocuments(json.data || []);
+        if (isMounted && json.success && Array.isArray(json.data)) {
+          setData(json.data);
         }
       } catch (err) {
-        console.error("Failed fetching documents", err);
+        console.error("Gagal memuat dokumen:", err);
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -50,156 +49,181 @@ export default function AdminDocumentPage() {
     };
   }, []);
 
-  const handleDelete = async (id: string, title: string) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus dokumen "${title}"?`)) return;
-
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/dokumen/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/dokumen/${deleteTarget.id}`, { method: "DELETE" });
       const json = await res.json();
-      if (json.success) {
-        loadDocs();
-      } else {
-        alert(json.error || "Gagal menghapus dokumen");
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Gagal menghapus dokumen");
       }
-    } catch {
-      alert("Terjadi kesalahan sistem saat menghapus data.");
+
+      addToast({
+        title: "Dokumen Dihapus",
+        description: `Regulasi "${deleteTarget.documentNumber}" berhasil dihapus.`,
+        type: "success",
+      });
+
+      setData((prev) => prev.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      addToast({
+        title: "Penghapusan Gagal",
+        description: err instanceof Error ? err.message : "Terjadi kesalahan sistem saat menghapus dokumen.",
+        type: "error",
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  const filtered = documents.filter(
-    (d) =>
-      d.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      d.documentNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (d.description && d.description.toLowerCase().includes(searchTerm.toLowerCase()))
+  // Derive categories and years for filters
+  const uniqueCategories = Array.from(new Set(data.map((d) => d.category))).sort();
+  const uniqueYears = Array.from(new Set(data.map((d) => d.year.toString()))).sort(
+    (a, b) => Number(b) - Number(a)
   );
+
+  const filters: FilterOption[] = [
+    {
+      key: "category",
+      label: "Kategori Regulasi",
+      options: uniqueCategories.map((c) => ({ label: c, value: c })),
+    },
+    {
+      key: "year",
+      label: "Tahun",
+      options: uniqueYears.map((y) => ({ label: y, value: y })),
+    },
+  ];
+
+  const columns: Column<DocumentItem>[] = [
+    {
+      key: "documentNumber",
+      header: "Nomor Dokumen",
+      sortable: true,
+      render: (item) => (
+        <div className="space-y-0.5">
+          <div className="font-bold text-slate-900 flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>{item.documentNumber}</span>
+          </div>
+          <div className="text-[11px] text-slate-400">Tahun {item.year}</div>
+        </div>
+      ),
+    },
+    {
+      key: "title",
+      header: "Tentang / Judul Dokumen",
+      sortable: true,
+      render: (item) => (
+        <div className="max-w-[340px]">
+          <span className="text-xs text-slate-800 line-clamp-2" title={item.title}>
+            {item.title}
+          </span>
+          {item.kek && (
+            <span className="text-[10px] text-blue-600 font-medium block mt-0.5">
+              Terkait: {item.kek.name}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "category",
+      header: "Kategori",
+      sortable: true,
+      render: (item) => (
+        <Badge variant="outline" className="text-[10px] font-semibold border-slate-200">
+          {item.category}
+        </Badge>
+      ),
+    },
+    {
+      key: "fileUrl",
+      header: "Berkas PDF",
+      render: (item) => (
+        <a
+          href={item.fileUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-blue-700 hover:underline font-medium"
+        >
+          <Download className="w-3 h-3" />
+          <span>Unduh</span>
+        </a>
+      ),
+    },
+    {
+      key: "createdAt",
+      header: "Ditambahkan",
+      sortable: true,
+      render: (item) => (
+        <span className="text-xs text-slate-500">
+          {new Date(item.createdAt).toLocaleDateString("id-ID", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })}
+        </span>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Kelola Dokumen JDIH</h1>
-          <p className="text-xs text-slate-500">
-            Arsip regulasi, Peraturan Pemerintah, dan ketetapan hukum KEK Indonesia.
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            setSelectedDoc(null);
-            setIsDialogOpen(true);
-          }}
-          size="sm"
-          className="gap-2 bg-blue-700 hover:bg-blue-800 text-white"
-        >
-          <Plus className="w-4 h-4" />
-          Tambah Dokumen JDIH
-        </Button>
-      </div>
-
-      {/* Filter & Search */}
-      <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-          <Input
-            placeholder="Cari dokumen berdasarkan nomor, judul, atau perihal..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 text-xs h-9 bg-slate-50 border-slate-200"
-          />
-        </div>
-      </div>
-
-      {/* Table Content */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-        {isLoading ? (
-          <div className="p-8 text-center text-xs text-slate-500">Memuat dokumen JDIH...</div>
-        ) : filtered.length === 0 ? (
-          <div className="p-8 text-center space-y-2">
-            <FileText className="w-8 h-8 text-slate-300 mx-auto" />
-            <p className="text-xs font-semibold text-slate-600">Tidak ada dokumen ditemukan</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-4">Judul Peraturan</th>
-                  <th className="py-3 px-4">Nomor Dokumen</th>
-                  <th className="py-3 px-4">Kategori</th>
-                  <th className="py-3 px-4">Tahun</th>
-                  <th className="py-3 px-4 text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {filtered.map((doc) => (
-                  <tr key={doc.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4 font-bold text-slate-900 max-w-md">
-                      {doc.title}
-                      {doc.description && (
-                        <span className="block text-[10px] font-normal text-slate-500 line-clamp-1">
-                          {doc.description}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-blue-700 font-semibold">
-                      {doc.documentNumber}
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge variant="amber" className="text-[10px]">
-                        {doc.category.replace(/_/g, " ")}
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600 font-semibold">
-                      {doc.year}
-                    </td>
-                    <td className="py-3 px-4 text-right space-x-1">
-                      {doc.fileUrl && (
-                        <a
-                          href={doc.fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center h-7 w-7 rounded-md border border-slate-200 text-slate-600 hover:text-blue-700 hover:bg-blue-50 transition-colors"
-                          title="Unduh Berkas PDF"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </a>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedDoc(doc);
-                          setIsDialogOpen(true);
-                        }}
-                        className="h-7 w-7 p-0"
-                        title="Edit Dokumen"
-                      >
-                        <Edit2 className="w-3.5 h-3.5 text-blue-600" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDelete(doc.id, doc.title)}
-                        className="h-7 w-7 p-0 hover:bg-red-50 hover:border-red-200"
-                        title="Hapus Dokumen"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <AdminDataTable
+        title="Manajemen Dokumen JDIH & Regulasi"
+        description="Kelola arsip Undang-Undang, Peraturan Pemerintah, dan ketetapan perundangan Kawasan Ekonomi Khusus."
+        createHref="/admin/dokumen/new"
+        createLabel="Tambah Regulasi Baru"
+        columns={columns}
+        data={data}
+        isLoading={isLoading}
+        filters={filters}
+        searchPlaceholder="Cari nomor dokumen, judul perundangan, atau tahun..."
+        searchKey={(item) => `${item.documentNumber} ${item.title} ${item.category} ${item.year}`}
+        actions={(item) => (
+          <div className="flex items-center justify-end gap-1.5">
+            <a
+              href={item.fileUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors"
+              title="Lihat berkas dokumen"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+            <Link
+              href={`/admin/dokumen/${item.id}/edit`}
+              className="p-1.5 rounded-lg border border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-slate-600 transition-colors"
+              title="Edit dokumen"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDeleteTarget(item)}
+              className="p-1.5 h-auto rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700"
+              title="Hapus dokumen"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
           </div>
         )}
-      </div>
+      />
 
-      {/* Document Modal Dialog */}
-      <DocumentDialog
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
-        initialData={selectedDoc}
-        onSuccess={loadDocs}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        title="Konfirmasi Hapus Dokumen JDIH"
+        description={`Apakah Anda yakin ingin menghapus regulasi "${deleteTarget?.documentNumber}"? Berkas tidak akan lagi tersedia di portal JDIH publik.`}
+        confirmLabel="Hapus Dokumen"
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleDelete}
+        onClose={() => setDeleteTarget(null)}
       />
     </div>
   );

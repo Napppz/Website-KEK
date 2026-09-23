@@ -1,45 +1,44 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Search, Edit2, Trash2, MapPin, Building2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import Link from "next/link";
+import { Edit2, Trash2, Eye, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { KekDialog, type KekData } from "@/components/admin/kek-dialog";
+import { Button } from "@/components/ui/button";
+import { AdminDataTable, type Column, type FilterOption } from "@/components/admin/admin-data-table";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
+
+interface KekItem {
+  id: string;
+  name: string;
+  slug: string;
+  province: string;
+  city: string;
+  area: number;
+  focus: string;
+  status: "BEROPERASI" | "TAHAP_PEMBANGUNAN";
+  createdAt: string;
+}
 
 export default function AdminKekPage() {
-  const [keks, setKeks] = React.useState<KekData[]>([]);
+  const { addToast } = useToast();
+  const [data, setData] = React.useState<KekItem[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [searchTerm, setSearchTerm] = React.useState("");
-  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
-  const [selectedKek, setSelectedKek] = React.useState<KekData | null>(null);
-
-  const loadKeks = React.useCallback(async () => {
-    try {
-      const res = await fetch("/api/kek");
-      const json = await res.json();
-      if (json.success) {
-        setKeks(json.data || []);
-      }
-    } catch (err) {
-      console.error("Failed fetching KEKs", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const [deleteTarget, setDeleteTarget] = React.useState<KekItem | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
 
   React.useEffect(() => {
     let isMounted = true;
     async function init() {
-      setIsLoading(true);
       try {
         const res = await fetch("/api/kek");
         const json = await res.json();
-        if (isMounted && json.success) {
-          setKeks(json.data || []);
+        if (isMounted && json.success && Array.isArray(json.data)) {
+          setData(json.data);
         }
       } catch (err) {
-        console.error("Failed fetching KEKs", err);
+        console.error("Gagal memuat data KEK:", err);
       } finally {
         if (isMounted) setIsLoading(false);
       }
@@ -50,153 +49,184 @@ export default function AdminKekPage() {
     };
   }, []);
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus data Kawasan ${name}?`)) return;
-
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/kek/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/kek/${deleteTarget.id}`, { method: "DELETE" });
       const json = await res.json();
-      if (json.success) {
-        loadKeks();
-      } else {
-        alert(json.error || "Gagal menghapus KEK");
+
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Gagal menghapus data KEK");
       }
-    } catch {
-      alert("Terjadi kesalahan sistem saat menghapus data.");
+
+      addToast({
+        title: "Data KEK Dihapus",
+        description: `Kawasan ${deleteTarget.name} berhasil dihapus dari sistem.`,
+        type: "success",
+      });
+
+      setData((prev) => prev.filter((item) => item.id !== deleteTarget.id));
+      setDeleteTarget(null);
+    } catch (err) {
+      addToast({
+        title: "Penghapusan Gagal",
+        description: err instanceof Error ? err.message : "Terjadi kesalahan sistem saat menghapus KEK.",
+        type: "error",
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  const filtered = keks.filter(
-    (k) =>
-      k.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      k.province.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      k.focus.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Provinces filter options derived dynamically
+  const uniqueProvinces = Array.from(new Set(data.map((d) => d.province))).sort();
+  const filters: FilterOption[] = [
+    {
+      key: "status",
+      label: "Status Operasional",
+      options: [
+        { label: "Beroperasi", value: "BEROPERASI" },
+        { label: "Tahap Pembangunan", value: "TAHAP_PEMBANGUNAN" },
+      ],
+    },
+    {
+      key: "province",
+      label: "Provinsi",
+      options: uniqueProvinces.map((p) => ({ label: p, value: p })),
+    },
+  ];
+
+  const columns: Column<KekItem>[] = [
+    {
+      key: "name",
+      header: "Nama KEK",
+      sortable: true,
+      render: (item) => (
+        <div className="space-y-0.5">
+          <div className="font-bold text-slate-900">{item.name}</div>
+          <div className="text-[11px] text-slate-400 font-mono">/kek/{item.slug}</div>
+        </div>
+      ),
+    },
+    {
+      key: "province",
+      header: "Provinsi",
+      sortable: true,
+      render: (item) => (
+        <div className="flex items-center gap-1.5 text-xs text-slate-700">
+          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <span>{item.province}</span>
+        </div>
+      ),
+    },
+    {
+      key: "city",
+      header: "Kota / Kab",
+      sortable: true,
+      render: (item) => <span className="text-xs text-slate-600">{item.city}</span>,
+    },
+    {
+      key: "area",
+      header: "Luas (Ha)",
+      sortable: true,
+      render: (item) => (
+        <span className="text-xs font-semibold text-slate-800">
+          {Number(item.area).toLocaleString("id-ID")} Ha
+        </span>
+      ),
+    },
+    {
+      key: "focus",
+      header: "Sektor Fokus",
+      sortable: true,
+      render: (item) => (
+        <span className="text-xs text-slate-600 max-w-[180px] truncate block" title={item.focus}>
+          {item.focus}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      sortable: true,
+      render: (item) => (
+        <Badge
+          variant={item.status === "BEROPERASI" ? "emerald" : "amber"}
+          className="text-[10px] font-semibold"
+        >
+          {item.status === "BEROPERASI" ? "Beroperasi" : "Tahap Pembangunan"}
+        </Badge>
+      ),
+    },
+    {
+      key: "createdAt",
+      header: "Terdaftar",
+      sortable: true,
+      render: (item) => (
+        <span className="text-xs text-slate-500">
+          {new Date(item.createdAt).toLocaleDateString("id-ID", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })}
+        </span>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Kelola Kawasan Ekonomi Khusus</h1>
-          <p className="text-xs text-slate-500">
-            Daftar entitas KEK terdaftar di seluruh wilayah Republik Indonesia.
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            setSelectedKek(null);
-            setIsDialogOpen(true);
-          }}
-          size="sm"
-          className="gap-2 bg-blue-700 hover:bg-blue-800 text-white"
-        >
-          <Plus className="w-4 h-4" />
-          Tambah Kawasan Baru
-        </Button>
-      </div>
-
-      {/* Filter & Search */}
-      <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-200">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-          <Input
-            placeholder="Cari kawasan berdasarkan nama, provinsi, atau sektor..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 text-xs h-9 bg-slate-50 border-slate-200"
-          />
-        </div>
-      </div>
-
-      {/* Table Content */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-        {isLoading ? (
-          <div className="p-8 text-center text-xs text-slate-500">Memuat data KEK...</div>
-        ) : filtered.length === 0 ? (
-          <div className="p-8 text-center space-y-2">
-            <Building2 className="w-8 h-8 text-slate-300 mx-auto" />
-            <p className="text-xs font-semibold text-slate-600">Tidak ada data KEK ditemukan</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-4">Nama Kawasan</th>
-                  <th className="py-3 px-4">Provinsi & Lokasi</th>
-                  <th className="py-3 px-4">Luas (Ha)</th>
-                  <th className="py-3 px-4">Fokus Industri</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {filtered.map((kek) => {
-                  const isOperating = kek.status === "BEROPERASI";
-                  return (
-                    <tr key={kek.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3 px-4 font-bold text-slate-900">
-                        {kek.name}
-                        <span className="block text-[10px] font-normal text-slate-400">
-                          {kek.slug}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-600">
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-amber-600" />
-                          {kek.province} ({kek.city})
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 font-semibold text-slate-700">
-                        {kek.area} Ha
-                      </td>
-                      <td className="py-3 px-4 text-slate-600 max-w-xs truncate">
-                        {kek.focus}
-                      </td>
-                      <td className="py-3 px-4">
-                        <Badge variant={isOperating ? "emerald" : "amber"} className="text-[10px]">
-                          {isOperating ? "Beroperasi" : "Pembangunan"}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4 text-right space-x-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedKek(kek);
-                            setIsDialogOpen(true);
-                          }}
-                          className="h-7 w-7 p-0"
-                          title="Edit KEK"
-                        >
-                          <Edit2 className="w-3.5 h-3.5 text-blue-600" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDelete(kek.id, kek.name)}
-                          className="h-7 w-7 p-0 hover:bg-red-50 hover:border-red-200"
-                          title="Hapus KEK"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-600" />
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      <AdminDataTable
+        title="Manajemen Kawasan Ekonomi Khusus"
+        description="Kelola spesifikasi, lokasi koordinat GIS, letak wilayah, dan status operasional KEK Indonesia."
+        createHref="/admin/kek/new"
+        createLabel="Tambah KEK Baru"
+        columns={columns}
+        data={data}
+        isLoading={isLoading}
+        filters={filters}
+        searchPlaceholder="Cari nama kawasan, provinsi, atau sektor fokus..."
+        searchKey={(item) => `${item.name} ${item.province} ${item.city} ${item.focus}`}
+        actions={(item) => (
+          <div className="flex items-center justify-end gap-1.5">
+            <Link
+              href={`/kek/${item.slug}`}
+              target="_blank"
+              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors"
+              title="Lihat halaman publik"
+            >
+              <Eye className="w-3.5 h-3.5" />
+            </Link>
+            <Link
+              href={`/admin/kek/${item.id}/edit`}
+              className="p-1.5 rounded-lg border border-slate-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-slate-600 transition-colors"
+              title="Edit data KEK"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </Link>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDeleteTarget(item)}
+              className="p-1.5 h-auto rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700"
+              title="Hapus data KEK"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
           </div>
         )}
-      </div>
+      />
 
-      {/* KEK Modal Dialog */}
-      <KekDialog
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
-        initialData={selectedKek}
-        onSuccess={loadKeks}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        title="Konfirmasi Hapus Kawasan KEK"
+        description={`Apakah Anda yakin ingin menghapus data KEK "${deleteTarget?.name}"? Tindakan ini tidak dapat dibatalkan.`}
+        confirmLabel="Hapus KEK"
+        variant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleDelete}
+        onClose={() => setDeleteTarget(null)}
       />
     </div>
   );
