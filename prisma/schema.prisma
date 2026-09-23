@@ -1,0 +1,208 @@
+// ==============================================================================
+// KEK INDONESIA INFORMATION & INVESTMENT PORTAL
+// Prisma Schema Configuration - PostgreSQL (Neon Serverless Compatible)
+// ==============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ------------------------------------------------------------------------------
+// ENUMS
+// ------------------------------------------------------------------------------
+
+enum Role {
+  ADMIN
+  EDITOR
+}
+
+enum KekStatus {
+  BEROPERASI
+  TAHAP_PEMBANGUNAN
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// ------------------------------------------------------------------------------
+// MODELS
+// ------------------------------------------------------------------------------
+
+/// Akun pengguna pengelola dan editor portal KEK
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  passwordHash  String?
+  role          Role      @default(EDITOR)
+  news          News[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+/// Data Kawasan Ekonomi Khusus (KEK) di seluruh Indonesia
+model KEK {
+  id          String        @id @default(cuid())
+  name        String
+  slug        String        @unique
+  description String        @db.Text
+  province    String
+  city        String
+  address     String
+  area        Float         // Luas wilayah dalam Hektar (Ha)
+  focus       String        // Sektor fokus (Manufaktur, Pariwisata, Logistik, Ekonomi Digital, dll)
+  status      KekStatus     @default(BEROPERASI)
+  latitude    Float
+  longitude   Float
+  imageUrl    String?
+  
+  // Relasi
+  investments Investment[]
+  news        News[]
+  documents   Document[]
+  galleries   Gallery[]
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([slug])
+  @@index([province])
+  @@index([status])
+  @@index([createdAt])
+  @@map("keks")
+}
+
+/// Kategori Berita & Siaran Pers
+model NewsCategory {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  news      News[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@map("news_categories")
+}
+
+/// Berita, siaran pers, dan artikel seputar KEK Indonesia
+model News {
+  id           String        @id @default(cuid())
+  title        String
+  slug         String        @unique
+  excerpt      String        @db.Text
+  content      String        @db.Text
+  thumbnailUrl String?
+  
+  authorId     String
+  author       User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  categoryId   String
+  category     NewsCategory  @relation(fields: [categoryId], references: [id])
+  
+  kekId        String?
+  kek          KEK?          @relation(fields: [kekId], references: [id], onDelete: SetNull)
+  
+  status       ContentStatus @default(DRAFT)
+  publishedAt  DateTime?
+  
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([slug])
+  @@index([status])
+  @@index([categoryId])
+  @@index([kekId])
+  @@index([publishedAt])
+  @@map("news")
+}
+
+/// Dokumen Regulasi & JDIH (Undang-Undang, PP, Perpres, Permen, dll)
+model Document {
+  id             String    @id @default(cuid())
+  title          String
+  documentNumber String    // Nomor dokumen/regulasi (misal: PP No. 40 Tahun 2021)
+  year           Int
+  category       String    // PP, Perpres, Permen, Kepmen, JDIH
+  description    String?   @db.Text
+  fileUrl        String
+  
+  kekId          String?
+  kek            KEK?      @relation(fields: [kekId], references: [id], onDelete: SetNull)
+  
+  publishedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([year])
+  @@index([category])
+  @@index([kekId])
+  @@index([publishedAt])
+  @@map("documents")
+}
+
+/// Laporan Berkala Kinerja & Akuntabilitas KEK
+model Report {
+  id          String   @id @default(cuid())
+  title       String
+  year        Int
+  description String?  @db.Text
+  fileUrl     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([year])
+  @@index([createdAt])
+  @@map("reports")
+}
+
+/// Galeri Foto & Dokumentasi Visual Kawasan
+model Gallery {
+  id          String   @id @default(cuid())
+  title       String
+  description String?  @db.Text
+  imageUrl    String
+  category    String   // Peresmian, Infrastruktur, Pelayanan, Kunjungan Kerja, dsb
+  
+  kekId       String?
+  kek         KEK?     @relation(fields: [kekId], references: [id], onDelete: SetNull)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([kekId])
+  @@index([createdAt])
+  @@map("galleries")
+}
+
+/// Data Realisasi Investasi & Penyerapan Tenaga Kerja per Kawasan
+model Investment {
+  id              String   @id @default(cuid())
+  kekId           String
+  kek             KEK      @relation(fields: [kekId], references: [id], onDelete: Cascade)
+  year            Int
+  investmentValue Decimal  @db.Decimal(20, 2) // Realisasi investasi dalam Rupiah (IDR)
+  employeeCount   Int      // Jumlah serapan tenaga kerja
+  description     String?  @db.Text
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([kekId])
+  @@index([year])
+  @@map("investments")
+}
